@@ -6,6 +6,7 @@ use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Url;
 use Drupal\inside_user\ReassignRevisionUser;
+use Drupal\inside_user\ReassignRevisionUserBatch;
 use Drupal\user\Entity\User;
 
 /**
@@ -65,9 +66,10 @@ final class UserReassignRevisionsForm extends FormBase {
 
     $manager = \Drupal::entityTypeManager();
     $date_formatter = \Drupal::service('date.formatter');
-    $matches = ReassignRevisionUser::getRevisions($this->id);
+    $total = ReassignRevisionUser::countRevisions($this->id);
+    $matches = ReassignRevisionUser::getRevisions($this->id, 100);
     $form['total'] = [
-      '#markup' => '<p>' . $this->formatPlural(count($matches), '1 matching revision', '@count matching revisions') . '</p>',
+      '#markup' => '<p>' . $this->formatPlural($total, '1 matching revision', '@count matching revisions') . ($total > count($matches) ? ' ' . $this->t('(showing the first @count)', ['@count' => count($matches)]) : '') . '</p>',
       '#weight' => -1,
     ];
 
@@ -80,7 +82,7 @@ final class UserReassignRevisionsForm extends FormBase {
       }
       $key = $type . ':' . $revision_id;
       $form['revisions'][$key]['entity'] = ['#plain_text' => $revision->label() ?? ''];
-      $form['revisions'][$key]['field'] = ['#plain_text' => 'revision_uid'];
+      $form['revisions'][$key]['field'] = ['#plain_text' => $manager->getDefinition($type)->getRevisionMetadataKey('revision_user')];
       $timestamp = method_exists($revision, 'getRevisionCreationTime')
         ? $revision->getRevisionCreationTime()
         : NULL;
@@ -108,7 +110,7 @@ final class UserReassignRevisionsForm extends FormBase {
     $form['submit'] = [
       '#type' => 'submit',
       '#value' => $this->t('Reassign Revisions'),
-      '#disabled' => !$matches,
+      '#disabled' => !$total,
     ];
     return $form;
   }
@@ -130,16 +132,11 @@ final class UserReassignRevisionsForm extends FormBase {
    * {@inheritdoc}
    */
   public function submitForm(array &$form, FormStateInterface $form_state): void {
-    $count = ReassignRevisionUser::replaceUser(
+    ReassignRevisionUserBatch::start(
       $this->id,
       (int) $form_state->getValue('replace_user')
     );
-    // Direct SQL updates bypass entity cache invalidation.
-    \Drupal::entityTypeManager()->getStorage('node')->resetCache();
-    \Drupal::entityTypeManager()->getStorage('media')->resetCache();
-    drupal_flush_all_caches();
-    $this->messenger()->addStatus($this->formatPlural($count, '1 revision was updated.', '@count revisions were updated.'));
-    $form_state->setRebuild(TRUE);
+
   }
 
 }

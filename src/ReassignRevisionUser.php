@@ -10,12 +10,35 @@ namespace Drupal\inside_user;
 final class ReassignRevisionUser {
 
   /**
+   * Discovers user-reference fields for content-usage reporting.
+   *
+   * Kept for compatibility with GetContentUsageCount::getUserUsages().
+   * These fields are for usage counts only; replaceUser() updates revision
+   * authors exclusively.
+   *
+   * @return string[]
+   *   User-reference field machine names.
+   */
+  public static function getUserReferenceFields(string $entity_type_id): array {
+    $manager = \Drupal::service('entity_field.manager');
+    $fields = [];
+    foreach ($manager->getFieldStorageDefinitions($entity_type_id) as $field_name => $definition) {
+      if ($definition->getType() === 'entity_reference'
+        && $definition->getSetting('target_type') === 'user') {
+        $fields[] = $field_name;
+      }
+    }
+    return array_values(array_unique($fields));
+  }
+
+
+  /**
    * Gets revision records whose author is the specified user.
    *
    * @return array<int, array{entity_type: string, revision_id: int}>
    *   Revision identifiers, including historical revisions.
    */
-  public static function getRevisions(int $user_id): array {
+  public static function getRevisions(int $user_id, int $limit = 100): array {
     if ($user_id < 0) {
       return [];
     }
@@ -27,11 +50,15 @@ final class ReassignRevisionUser {
       $query->fields('r', [$info['revision_key']]);
       $query->condition('r.' . $info['author_key'], $user_id);
       $query->orderBy('r.' . $info['revision_key'], 'DESC');
+      $query->range(0, max(1, $limit - count($results)));
       foreach ($query->execute()->fetchCol() as $revision_id) {
         $results[] = [
           'entity_type' => $entity_type,
           'revision_id' => (int) $revision_id,
         ];
+      }
+      if (count($results) >= $limit) {
+        break;
       }
     }
     return $results;
@@ -95,10 +122,10 @@ final class ReassignRevisionUser {
   /**
    * Resolves and verifies the physical revision metadata schema.
    *
-   * Node and media use revision_uid in their standard revision base tables.
+   * Revision author column names may differ for node and media.
    * Fail closed if a site has changed that mapping.
    */
-  private static function revisionTables(): array {
+  public static function revisionTables(): array {
     $manager = \Drupal::entityTypeManager();
     $schema = \Drupal::database()->schema();
     $tables = [];
