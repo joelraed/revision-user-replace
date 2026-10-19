@@ -10,6 +10,29 @@ namespace Drupal\inside_user;
 final class ReassignRevisionUser {
 
   /**
+   * Discovers user-reference fields for content-usage reporting.
+   *
+   * Kept for compatibility with GetContentUsageCount::getUserUsages().
+   * These fields are for usage counts only; replaceUser() updates revision
+   * authors exclusively.
+   *
+   * @return string[]
+   *   User-reference field machine names.
+   */
+  public static function getUserReferenceFields(string $entity_type_id): array {
+    $manager = \Drupal::service('entity_field.manager');
+    $fields = [];
+    foreach ($manager->getFieldStorageDefinitions($entity_type_id) as $field_name => $definition) {
+      if ($definition->getType() === 'entity_reference'
+        && $definition->getSetting('target_type') === 'user') {
+        $fields[] = $field_name;
+      }
+    }
+    return array_values(array_unique($fields));
+  }
+
+
+  /**
    * Gets revision records whose author is the specified user.
    *
    * @return array<int, array{entity_type: string, revision_id: int}>
@@ -95,7 +118,7 @@ final class ReassignRevisionUser {
   /**
    * Resolves and verifies the physical revision metadata schema.
    *
-   * Node and media use revision_uid in their standard revision base tables.
+   * Revision author column names may differ for node and media.
    * Fail closed if a site has changed that mapping.
    */
   private static function revisionTables(): array {
