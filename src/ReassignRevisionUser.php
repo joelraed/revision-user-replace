@@ -38,7 +38,7 @@ final class ReassignRevisionUser {
    * @return array<int, array{entity_type: string, revision_id: int}>
    *   Revision identifiers, including historical revisions.
    */
-  public static function getRevisions(int $user_id): array {
+  public static function getRevisions(int $user_id, int $limit = 100): array {
     if ($user_id < 0) {
       return [];
     }
@@ -50,11 +50,15 @@ final class ReassignRevisionUser {
       $query->fields('r', [$info['revision_key']]);
       $query->condition('r.' . $info['author_key'], $user_id);
       $query->orderBy('r.' . $info['revision_key'], 'DESC');
+      $query->range(0, max(1, $limit - count($results)));
       foreach ($query->execute()->fetchCol() as $revision_id) {
         $results[] = [
           'entity_type' => $entity_type,
           'revision_id' => (int) $revision_id,
         ];
+      }
+      if (count($results) >= $limit) {
+        break;
       }
     }
     return $results;
@@ -121,7 +125,7 @@ final class ReassignRevisionUser {
    * Revision author column names may differ for node and media.
    * Fail closed if a site has changed that mapping.
    */
-  private static function revisionTables(): array {
+  public static function revisionTables(): array {
     $manager = \Drupal::entityTypeManager();
     $schema = \Drupal::database()->schema();
     $tables = [];
