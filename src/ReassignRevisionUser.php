@@ -109,7 +109,7 @@ final class ReassignRevisionUser {
       }
       $table = $definition->getRevisionTable();
       $revision_key = $definition->getKey('revision');
-      $author_key = 'revision_uid';
+      $author_key = $definition->getRevisionMetadataKey('revision_user');
       if (!$table || !$revision_key || !$schema->tableExists($table)
         || !$schema->fieldExists($table, $revision_key)
         || !$schema->fieldExists($table, $author_key)) {
